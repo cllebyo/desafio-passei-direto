@@ -1,0 +1,73 @@
+- name: Run - Desafio DevOps - Passei Direto
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  tasks:
+    - docker_service:
+        project_src: .
+        state: absent     
+
+    - docker_service:
+        project_name: desafio_passei_direto
+        definition:
+          version: '2'
+          volumes:
+            desafio-database:
+              driver: "local"          
+          networks:
+            desafio-network:          
+          services:
+            db:
+              image: mysql:5.7
+              ports:
+                - "3306:3306"
+              volumes:
+                - "{{ playbook_dir }}/database:/docker-entrypoint-initdb.d"
+                - desafio-database:/var/lib/mysql
+              environment:
+                MYSQL_DATABASE: notes
+                MYSQL_USER: notes-api
+                MYSQL_PASSWORD: notes-api
+                MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+              networks:
+                desafio-network:
+                  aliases:
+                    - database
+            proxy:
+              image: nginx:1.15.3-alpine
+              ports:
+                - "80:80"
+              volumes:
+                - "{{ playbook_dir }}/nginx/default.conf:/etc/nginx/conf.d/default.conf"
+              environment:
+                NGINX_PORT: 80
+              depends_on:
+                - api      
+              networks:
+                desafio-network:
+                  aliases:
+                    - proxy              
+            api:
+              build: "{{ playbook_dir }}/api"
+              ports:
+                - "8080:8080"
+              environment:
+                DB_HOST: database
+                NODE_ENV: production
+                NODEJS_API_PORT: 8080
+              depends_on:
+                - db      
+              networks:
+                desafio-network:
+                  aliases:
+                    - api  
+      register: output
+
+    - debug:
+        var: output
+
+    - assert:
+        that:          
+          - "api.desafiopasseidireto_api_1.state.running"
+          - "db.desafiopasseidireto_db_1.state.running"
+          - "proxy.desafiopasseidireto_proxy_1.state.running"
